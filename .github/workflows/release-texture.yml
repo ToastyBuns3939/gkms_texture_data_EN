@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - master
-    paths:
-      - 'sprite/**'
-      - 'texture/**'
   workflow_dispatch:
     inputs:
       force_update:
@@ -34,7 +31,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Detect texture changes since latest tag
+      - name: Detect repo changes since latest tag
         id: changes
         shell: bash
         run: |
@@ -49,21 +46,21 @@ jobs:
             exit 0
           fi
 
-          diff_output=$(git diff --name-status "$latest_tag" HEAD -- sprite texture || true)
+          diff_output=$(git diff --name-status "$latest_tag" HEAD || true)
 
           if [ -n "$diff_output" ]; then
             echo "Changes detected since tag $latest_tag:"
             echo "$diff_output"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No sprite/texture changes detected since tag $latest_tag."
+            echo "No repository changes detected since tag $latest_tag."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Stop when no releasable changes are found
         if: steps.changes.outputs.changed != 'true'
         run: |
-          echo "No file content or filename changes found under sprite/ or texture/. Skipping tag and release."
+          echo "No file content or filename changes found since the latest tag. Skipping tag and release."
 
       - name: Bump version
         if: steps.changes.outputs.changed == 'true'
