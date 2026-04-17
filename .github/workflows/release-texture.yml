@@ -7,6 +7,13 @@ on:
     paths:
       - 'sprite/**'
       - 'texture/**'
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: 'Run release check manually'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -27,7 +34,39 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Detect texture changes since latest tag
+        id: changes
+        shell: bash
+        run: |
+          git fetch --tags --force
+
+          latest_tag=$(git tag --sort=-v:refname | head -n1 || true)
+          echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$latest_tag" ]; then
+            echo "No existing tag found. A new release will be created."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          diff_output=$(git diff --name-status "$latest_tag" HEAD -- sprite texture || true)
+
+          if [ -n "$diff_output" ]; then
+            echo "Changes detected since tag $latest_tag:"
+            echo "$diff_output"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No sprite/texture changes detected since tag $latest_tag."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop when no releasable changes are found
+        if: steps.changes.outputs.changed != 'true'
+        run: |
+          echo "No file content or filename changes found under sprite/ or texture/. Skipping tag and release."
+
       - name: Bump version
+        if: steps.changes.outputs.changed == 'true'
         id: bump
         shell: bash
         run: |
@@ -51,13 +90,16 @@ jobs:
           echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
 
       - name: Commit bumped version
+        if: steps.changes.outputs.changed == 'true'
         run: |
           git add texture_version.txt
           git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }}"
           git push origin HEAD:${{ github.ref_name }}
 
       - name: Create release archive
+        if: steps.changes.outputs.changed == 'true'
         run: |
+          rm -rf build texture2d.zip
           mkdir -p build/texture2d
 
           cp -r sprite build/texture2d/
@@ -69,11 +111,13 @@ jobs:
           mv texture2d.zip ../
 
       - name: Create and push tag
+        if: steps.changes.outputs.changed == 'true'
         run: |
           git tag "${{ steps.bump.outputs.new_version }}"
           git push origin "${{ steps.bump.outputs.new_version }}"
 
       - name: Create release
+        if: steps.changes.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
