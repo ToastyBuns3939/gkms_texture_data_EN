@@ -1,0 +1,74 @@
+name: Release texture pack
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'sprite/**'
+      - 'texture/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        shell: bash
+        run: |
+          if [ ! -f version.txt ]; then
+            echo "version.txt not found at repository root"
+            exit 1
+          fi
+
+          current_version=$(tr -d '[:space:]' < version.txt)
+          IFS='.' read -r major minor patch <<< "$current_version"
+
+          if [ -z "$major" ] || [ -z "$minor" ] || [ -z "$patch" ]; then
+            echo "Invalid version format in version.txt: $current_version"
+            exit 1
+          fi
+
+          new_version="$major.$minor.$((patch + 1))"
+          echo "$new_version" > version.txt
+
+          echo "current_version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
+
+      - name: Commit bumped version
+        run: |
+          git add version.txt
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }}"
+          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Create release archive
+        run: |
+          zip -r texture2d.zip sprite texture version.txt
+
+      - name: Create and push tag
+        run: |
+          git tag "${{ steps.bump.outputs.new_version }}"
+          git push origin "${{ steps.bump.outputs.new_version }}"
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.bump.outputs.new_version }}" texture2d.zip \
+            --title "${{ steps.bump.outputs.new_version }}" \
+            --notes "Automated release for version ${{ steps.bump.outputs.new_version }}"
