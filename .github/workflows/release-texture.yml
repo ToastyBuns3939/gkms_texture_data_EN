@@ -31,34 +31,42 @@ jobs:
         id: bump
         shell: bash
         run: |
-          if [ ! -f version.txt ]; then
-            echo "version.txt not found at repository root"
+          if [ ! -f texture_version.txt ]; then
+            echo "texture_version.txt not found at repository root"
             exit 1
           fi
 
-          current_version=$(tr -d '[:space:]' < version.txt)
+          current_version=$(tr -d '[:space:]' < texture_version.txt)
           IFS='.' read -r major minor patch <<< "$current_version"
 
           if [ -z "$major" ] || [ -z "$minor" ] || [ -z "$patch" ]; then
-            echo "Invalid version format in version.txt: $current_version"
+            echo "Invalid version format in texture_version.txt: $current_version"
             exit 1
           fi
 
           new_version="$major.$minor.$((patch + 1))"
-          echo "$new_version" > version.txt
+          echo "$new_version" > texture_version.txt
 
           echo "current_version=$current_version" >> "$GITHUB_OUTPUT"
           echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
 
       - name: Commit bumped version
         run: |
-          git add version.txt
+          git add texture_version.txt
           git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }}"
           git push origin HEAD:${{ github.ref_name }}
 
       - name: Create release archive
         run: |
-          zip -r texture2d.zip sprite texture version.txt
+          mkdir -p build/texture2d
+
+          cp -r sprite build/texture2d/
+          cp -r texture build/texture2d/
+          cp texture_version.txt build/texture2d/
+
+          cd build
+          zip -r texture2d.zip texture2d
+          mv texture2d.zip ../
 
       - name: Create and push tag
         run: |
