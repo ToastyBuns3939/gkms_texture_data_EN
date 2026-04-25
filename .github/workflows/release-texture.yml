@@ -99,8 +99,9 @@ jobs:
           rm -rf build texture2d.zip
           mkdir -p build/texture2d
 
-          cp -r sprite build/texture2d/
-          cp -r texture build/texture2d/
+          cp -r atlas build/texture2d/
+          cp -r image build/texture2d/
+          cp -r others build/texture2d/
           cp texture_version.txt build/texture2d/
 
           cd build
