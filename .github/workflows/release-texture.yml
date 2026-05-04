@@ -108,6 +108,11 @@ jobs:
           zip -r texture2d.zip texture2d
           mv texture2d.zip ../
 
+      - name: Generate checksum
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          sha256sum texture2d.zip > SHA256SUMS
+
       - name: Create and push tag
         if: steps.changes.outputs.changed == 'true'
         run: |
@@ -119,6 +124,38 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.bump.outputs.new_version }}" texture2d.zip \
+          gh release create "${{ steps.bump.outputs.new_version }}" texture2d.zip SHA256SUMS \
             --title "${{ steps.bump.outputs.new_version }}" \
             --notes "Automated release for version ${{ steps.bump.outputs.new_version }}"
+
+      - name: Upload release files to Cloudflare R2
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          VERSION: ${{ steps.bump.outputs.new_version }}
+        run: |
+          aws s3 cp texture2d.zip "s3://${{ secrets.R2_BUCKET }}/releases/$VERSION/texture2d.zip" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/zip"
+
+          aws s3 cp SHA256SUMS "s3://${{ secrets.R2_BUCKET }}/releases/$VERSION/SHA256SUMS" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "text/plain"
+
+      - name: Upload ping file to Cloudflare R2
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          dd if=/dev/urandom of=ping.bin bs=1024 count=128
+
+          aws s3 cp ping.bin "s3://${{ secrets.R2_BUCKET }}/ping.bin" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+            --cache-control "no-store" \
+            --content-type "application/octet-stream"
